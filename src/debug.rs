@@ -232,9 +232,13 @@ impl DbgInfo {
     }
 
     /// Adds a cell to the cell hash map, given its [`DbgNode`], **recursively**.
+    ///
+    /// # TODO
+    ///
+    /// Replace by [`Self::stackless_collect`]?
     fn collect(&mut self, cell: &Cell, dbg: &DbgNode) {
         let hash = cell.repr_hash().to_hex_string();
-        // note existence of identical cells in a tree is normal
+        // NB: existence of identical cells in a tree is normal.
         if !self.map.contains_key(&hash) {
             self.map.insert(hash, dbg.offsets.clone());
         }
@@ -242,6 +246,29 @@ impl DbgInfo {
             let child_cell = cell.reference(i).unwrap();
             let child_dbg = dbg.children[i].clone();
             self.collect(&child_cell, &child_dbg);
+        }
+    }
+
+    /// Adds a cell to the cell hash map, given its [`DbgNode`], **recursively** (stackless).
+    pub fn stackless_collect(&mut self, cell: &Cell, dbg: &DbgNode) {
+        let mut stack: Vec<(Cell, &DbgNode)> = Vec::with_capacity(4);
+        let mut hash: String;
+        stack.push((cell.clone(), dbg));
+        // We're cloning a cell here, but it's just an [`std::sync::Arc`] anyway.
+
+        while let Some((cell, dbg)) = stack.pop() {
+            hash = cell.repr_hash().to_hex_string();
+            // NB: existence of identical cells in a tree is normal.
+            if !self.map.contains_key(&hash) {
+                self.map.insert(hash, dbg.offsets.clone());
+            }
+            for (subcell_idx, subcell) in cell.clone_references().into_iter().enumerate() {
+                let subdbg = dbg
+                    .children
+                    .get(subcell_idx)
+                    .expect("cell and debug node don't agree on the number of subcells");
+                stack.push((subcell, subdbg))
+            }
         }
     }
 }
