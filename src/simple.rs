@@ -12,11 +12,9 @@
 */
 
 use super::{
-    errors::ToOperationParameterError, parse::*, writer::Writer, CompileHandler, CompileResult,
-    Engine, EnsureParametersCountInRange,
+    errors::ToOperationParameterError, parse::*, writer::Writer, CompileHandler, Engine,
+    EnsureParametersCountInRange,
 };
-
-use crate::debug::{DbgNode, DbgPos};
 
 // Compilation engine *********************************************************
 

@@ -36,7 +36,7 @@ use writer::{CodePage0, Writer};
 
 // Basic types *****************************************************************
 /// Operation Compilation result
-type CompileResult = Result<(), OperationError>;
+pub type CompileResult = Result<(), OperationError>;
 type CompileHandler<T> =
     fn(&mut Engine<T>, &Vec<&str>, destination: &mut T, pos: DbgPos) -> CompileResult;
 
