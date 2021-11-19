@@ -251,10 +251,14 @@ impl DbgInfo {
 
     /// Adds a cell to the cell hash map, given its [`DbgNode`], **recursively** (stackless).
     pub fn stackless_collect(&mut self, cell: &Cell, dbg: &DbgNode) {
+        // Could factor the stack in `self` so that it's not allocated everytime.
         let mut stack: Vec<(Cell, &DbgNode)> = Vec::with_capacity(4);
         let mut hash: String;
         stack.push((cell.clone(), dbg));
-        // We're cloning a cell here, but it's just an [`std::sync::Arc`] anyway.
+        //          ^^^^^^^^^^^^
+        // We're cloning a cell here, but it's just an [`std::sync::Arc`] anyway. We have no choice
+        // anyway, ATM there does not seem to be a way to access a [`Cell`]'s subcells by reference,
+        // so the loop below can only access subcells as owned [`Cell`]s, not references.
 
         while let Some((cell, dbg)) = stack.pop() {
             hash = cell.repr_hash().to_hex_string();
