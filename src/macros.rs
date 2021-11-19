@@ -13,21 +13,37 @@
 
 //! This crate's macros.
 
+/// Internal macro for [`simple_commands`][crate::simple_commands].
+///
+/// Has two modes selected with the first two tokens, `@` followed by `count` or `resolve`.
+///
+/// # `resolve`
+///
+/// Takes the same input as [`simple_commands`][crate::simple_commands] and, for each command,
+/// generates a function having the command name that compiles said command. Parameters are
+/// passed as a slice of [`str`]ings which is checked to have exactly the number of parameters
+/// expected. The expected number of parameters is counted by the `count` mode of this macro.
+///
+/// # `count`
+///
+/// Takes a `;`-separated sequence of `ident = ident` and yields the length of that sequence. This
+/// is used by `resolve` to retrieve the number of parameters expected by a command.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! simple_commands_internal {
-
-    // quantity of nothing is 0
-    (@count ) => { 0u8 };
-
-    // count quantity recursively
-    (@count $_x:ident = $_y:ident; $($pname:ident = $parser:ident;)*) => {
+    // Length of the empty param sequence is `0`.
+    (@count $(;)? ) => { 0u8 };
+    // Length is `1` plus the length of the tail.
+    (@count
+        $_head_pname:ident = $_head_parser:ident;
+        $($tail_pname:ident = $tail_parser:ident;)*
+    ) => {
         1u8 + $crate::simple_commands_internal!(
-            @count $($pname = $parser;)*
+            @count $($tail_pname = $tail_parser;)*
         )
     };
 
-    // Command with no parameters.
+    // Generates the compile function for a command with no parameters.
     (@resolve
         $command:ident
         => $code_head:expr $(, $code_tail:expr)*
@@ -55,7 +71,7 @@ macro_rules! simple_commands_internal {
         }
     };
 
-    // parse command with any parameters
+    // Generates the compile function for a command with one or more parameters.
     (@resolve
         $command:ident $($pname:ident = $parser:ident);+
         => $code_head:expr $(, $code_tail:expr)*
@@ -88,15 +104,15 @@ macro_rules! simple_commands_internal {
                 _parameters_i_ += 1;
             )*
             result.push($code_head);
-            $({ result.push($code_tail); })*
+            $( result.push($code_tail); )*
             destination.write_command(result.as_slice(), $crate::debug::DbgNode::from(pos))
         }
     };
 }
 
-/// Generates *simple* TVM commands, *i.e.* non-variadic commands.
+/// Generates compile functions for *simple* (non-variadic) TVM commands.
 ///
-/// Input: a sequence of command definitions of form
+/// Input is a sequence of command definitions of form
 ///
 /// - command name (ident), then
 /// - zero or more `;`-separated arguments of form
@@ -106,6 +122,11 @@ macro_rules! simple_commands_internal {
 ///     with optional trailing `;`, then
 /// - `=>` followed by
 /// - a non-empty `,`-separated list of expressions.
+///
+/// Generates
+///
+/// - compile functions for all commands, and
+/// - an `enumerate_simple_commands` function that yields all commands and their compile function.
 #[macro_export]
 macro_rules! simple_commands {
     // parse whole block of simple commands
