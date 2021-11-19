@@ -159,25 +159,30 @@ macro_rules! simple_commands {
             )*
             "\n",
         )]
-        pub fn enumerate_simple_commands() -> &'static [(&'static str, CompileHandler<T>)] {
+        pub fn enumerate_simple_commands() -> &'static [(&'static str, $crate::CompileHandler<T>)] {
             &[
-                $( (stringify!($command), Engine::<T>::$command), )*
+                $( (stringify!($command), $crate::Engine::<T>::$command), )*
             ]
         }
     };
 }
 
-#[macro_export]
+/// Hidden helper macro for [`div_variant`].
 #[doc(hidden)]
 macro_rules! div_variant_internal {
-    (@resolve $command:ident => $code: expr) => {
-        impl<M: CommandBehaviourModifier> Div<M> {
-            pub fn $command<T: Writer>(
-                _engine: &mut Engine<T>,
-                par: &Vec<&str>,
+    (@resolve $command:ident => $code:expr) => {
+        impl<M: $crate::complex::CommandBehaviourModifier> $crate::complex::Div<M> {
+            #[doc = concat!(
+                "Compile function for the `",
+                stringify!($command),
+                "` division variant."
+            )]
+            pub fn $command<T: $crate::Writer>(
+                _engine: &mut $crate::Engine<T>,
+                par: &std::vec::Vec<&str>,
                 destination: &mut T,
-                pos: DbgPos,
-            ) -> CompileResult {
+                pos: $crate::DbgPos,
+            ) -> $crate::CompileResult {
                 par.assert_len_in(0..=1)?;
                 destination.write_command(
                     &M::modify({
@@ -189,20 +194,22 @@ macro_rules! div_variant_internal {
                             vec![0xA9, v]
                         }
                     }),
-                    DbgNode::from(pos),
+                    $crate::debug::DbgNode::from(pos),
                 )
             }
         }
     };
 }
 
-#[macro_export]
+/// Generates division variant commands.
+///
+/// For each `$command` and associated `$code` in the input, adds a function called `$command` to
+/// [`Div`][crate::complex::Div] handling this division variant. The `$code` acts as a selector
+/// (after going through a mask) for the multi-purpose division opcode.
 macro_rules! div_variant {
     ($($command: ident => $code:expr)*) => {
         $(
-            $crate::div_variant_internal!(
-                @resolve $command => $code
-            );
+            div_variant_internal!(@resolve $command => $code);
         )*
     };
 }

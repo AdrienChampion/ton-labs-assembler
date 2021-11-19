@@ -12,7 +12,7 @@
 */
 
 use super::{
-    errors::ToOperationParameterError, parse::*, writer::Writer, CompileHandler, Engine,
+    errors::ToOperationParameterError, parse::*, writer::Writer, Engine,
     EnsureParametersCountInRange,
 };
 
