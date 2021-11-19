@@ -11,12 +11,9 @@
 * limitations under the License.
 */
 
-use crate::simple_commands;
 use super::{
-    CompileResult, CompileHandler, Engine, EnsureParametersCountInRange,
-    errors::ToOperationParameterError,
-    parse::*,
-    writer::Writer,
+    errors::ToOperationParameterError, parse::*, writer::Writer, CompileHandler, CompileResult,
+    Engine, EnsureParametersCountInRange,
 };
 
 use crate::debug::{DbgNode, DbgPos};

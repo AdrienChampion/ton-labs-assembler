@@ -12,31 +12,33 @@
 */
 
 use std::{collections::HashMap, ops::RangeInclusive};
-use ton_types::{Cell, SliceData, BuilderData};
+use ton_types::{BuilderData, Cell, SliceData};
 
-pub use debug::{Line, Lines, DbgInfo, lines_to_string};
+pub use debug::{lines_to_string, DbgInfo, Line, Lines};
 
 mod errors;
 pub use errors::{
-    CompileError, OperationError, ParameterError, Position, 
-    ToOperationParameterError,
+    CompileError, OperationError, ParameterError, Position, ToOperationParameterError,
 };
 
-mod debug;
+#[macro_use]
 mod macros;
-mod parse;
+
 mod complex;
-mod simple;
 mod convert;
+mod debug;
+mod parse;
+mod simple;
 
 mod writer;
-use writer::{CodePage0, Writer};
 pub use debug::DbgPos;
+use writer::{CodePage0, Writer};
 
 // Basic types *****************************************************************
 /// Operation Compilation result
 type CompileResult = Result<(), OperationError>;
-type CompileHandler<T> = fn(&mut Engine<T>, &Vec<&str>, destination:&mut T, pos: DbgPos) -> CompileResult;
+type CompileHandler<T> =
+    fn(&mut Engine<T>, &Vec<&str>, destination: &mut T, pos: DbgPos) -> CompileResult;
 
 // CompileError::Operation handlers ***********************************************************
 trait EnsureParametersCountInRange {
@@ -45,7 +47,7 @@ trait EnsureParametersCountInRange {
     fn assert_len_in(&self, _r: RangeInclusive<usize>) -> Result<(), OperationError>;
 }
 
-impl<T> EnsureParametersCountInRange for Vec<T>{
+impl<T> EnsureParametersCountInRange for Vec<T> {
     fn assert_empty(&self) -> Result<(), OperationError> {
         self.assert_len_in(0..=0)
     }
@@ -67,9 +69,9 @@ impl<T> EnsureParametersCountInRange for Vec<T>{
 
 // Command compilation context ************************************************
 
-struct CommandContext<T> 
+struct CommandContext<T>
 where
-    T: Writer
+    T: Writer,
 {
     operation: String,
     line_no_cmd: usize,
@@ -90,10 +92,14 @@ impl<T: Writer> Default for CommandContext<T> {
             rule_option: None,
         }
     }
-    
 }
 impl<T: Writer> CommandContext<T> {
-    fn new(operation: String, char_no_cmd: usize, line_no_cmd: usize, rule_option: Option<CompileHandler<T>>) -> Self {
+    fn new(
+        operation: String,
+        char_no_cmd: usize,
+        line_no_cmd: usize,
+        rule_option: Option<CompileHandler<T>>,
+    ) -> Self {
         Self {
             operation,
             line_no_cmd,
@@ -108,9 +114,17 @@ impl<T: Writer> CommandContext<T> {
             let pos = &line.pos;
             let filename = pos.filename.clone();
             let line = pos.line_code;
-            Err(CompileError::operation(line, self.char_no_cmd, self.operation.clone(), error).with_filename(filename))
+            Err(
+                CompileError::operation(line, self.char_no_cmd, self.operation.clone(), error)
+                    .with_filename(filename),
+            )
         } else {
-            Err(CompileError::operation(self.line_no_cmd, self.char_no_cmd, self.operation.clone(), error))
+            Err(CompileError::operation(
+                self.line_no_cmd,
+                self.char_no_cmd,
+                self.operation.clone(),
+                error,
+            ))
         }
     }
     fn has_command(&self) -> bool {
@@ -124,7 +138,7 @@ impl<T: Writer> CommandContext<T> {
     ) -> Result<(), CompileError> {
         let rule = match self.rule_option.as_ref() {
             Some(rule) => rule,
-            None => return Ok(())
+            None => return Ok(()),
         };
         let (line_no, char_no) = engine.set_pos(self.line_no_par, self.char_no_par);
         let mut n = par.len();
@@ -140,7 +154,7 @@ impl<T: Writer> CommandContext<T> {
                 Err(OperationError::TooManyParameters) if n != 0 => {
                     n -= 1;
                 }
-                Err(e) => return self.abort(e, engine)
+                Err(e) => return self.abort(e, engine),
             }
         }
         engine.set_pos(line_no, char_no);
@@ -151,9 +165,12 @@ impl<T: Writer> CommandContext<T> {
                 if !*was_comma {
                     if let Some(line) = engine.lines.get(*line - 1) {
                         let pos = &line.pos;
-                        return Err(CompileError::syntax(pos.line_code, *column, "Missing comma").with_filename(pos.filename.clone()))
+                        return Err(
+                            CompileError::syntax(pos.line_code, *column, "Missing comma")
+                                .with_filename(pos.filename.clone()),
+                        );
                     } else {
-                        return Err(CompileError::syntax(*line, *column, "Missing comma"))
+                        return Err(CompileError::syntax(*line, *column, "Missing comma"));
                     }
                 }
             }
@@ -165,28 +182,34 @@ impl<T: Writer> CommandContext<T> {
                 let pos = &line.pos;
                 let filename = pos.filename.clone();
                 let line = pos.line_code;
-                Position { filename, line, column }
+                Position {
+                    filename,
+                    line,
+                    column,
+                }
             } else {
-                Position { filename: String::new(), line, column }
+                Position {
+                    filename: String::new(),
+                    line,
+                    column,
+                }
             };
             if was_comma {
                 return Err(CompileError::Operation(
                     position,
                     self.operation.clone(),
                     OperationError::TooManyParameters,
-                ))
+                ));
             } else if n == 0 {
                 // or CompileError::Operation
                 return Err(CompileError::Operation(
                     position,
                     self.operation.clone(),
                     OperationError::TooManyParameters,
-                ))
+                ));
             } else {
                 // or CompileError::Syntax "missing comma"
-                return Err(CompileError::UnknownOperation(
-                    position, token.into()
-                ))
+                return Err(CompileError::UnknownOperation(position, token.into()));
             }
         }
         Ok(())
@@ -402,21 +425,30 @@ pub fn compile_code(code: &str) -> Result<SliceData, CompileError> {
 
 pub fn compile_code_to_cell(code: &str) -> Result<Cell, CompileError> {
     log::trace!(target: "tvm", "begin compile\n");
-    Engine::<CodePage0>::new(vec![]).compile(code).map(|code| code.finalize().0.into_cell().map_err(|_| CompileError::unknown(0, 0, "failure while convert BuilderData to cell")))?
+    Engine::<CodePage0>::new(vec![]).compile(code).map(|code| {
+        code.finalize()
+            .0
+            .into_cell()
+            .map_err(|_| CompileError::unknown(0, 0, "failure while convert BuilderData to cell"))
+    })?
 }
 
 pub fn compile_code_to_builder(code: &str) -> Result<BuilderData, CompileError> {
     log::trace!(target: "tvm", "begin compile\n");
-    Engine::<CodePage0>::new(vec![]).compile(code).map(|code| code.finalize().0)
+    Engine::<CodePage0>::new(vec![])
+        .compile(code)
+        .map(|code| code.finalize().0)
 }
 
 pub fn compile_code_debuggable(code: Lines) -> Result<(SliceData, DbgInfo), CompileError> {
     log::trace!(target: "tvm", "begin compile\n");
     let source = lines_to_string(&code);
-    let (builder, dbg) = Engine::<CodePage0>::new(code).compile(source.as_str()).map(|code| code.finalize())?;
-    let cell = builder.into_cell().map_err(|_| CompileError::unknown(0, 0, "failure while convert BuilderData to cell"))?;
+    let (builder, dbg) = Engine::<CodePage0>::new(code)
+        .compile(source.as_str())
+        .map(|code| code.finalize())?;
+    let cell = builder
+        .into_cell()
+        .map_err(|_| CompileError::unknown(0, 0, "failure while convert BuilderData to cell"))?;
     let dbg_info = DbgInfo::from(&cell, &dbg);
     Ok((cell.into(), dbg_info))
 }
-
-

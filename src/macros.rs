@@ -11,6 +11,8 @@
 * limitations under the License.
 */
 
+//! This crate's macros.
+
 #[macro_export]
 macro_rules! simple_commands {
 
@@ -26,22 +28,22 @@ macro_rules! simple_commands {
     (@resolve $command:ident => $($code:expr),+) => {
         #[allow(non_snake_case)]
         pub fn $command(
-            &mut self, 
-            par: &Vec<&str>, 
+            &mut self,
+            par: &Vec<&str>,
             destination: &mut T,
             pos: DbgPos
         ) -> CompileResult {
             par.assert_empty()?;
             destination.write_command(&[$($code),*], DbgNode::from(pos))
-        }  
+        }
     };
 
     // parse command with any parameters
     (@resolve $command:ident $($pname:ident = $parser:ident);+ => $($code:expr),+) => {
         #[allow(non_snake_case)]
         pub fn $command(
-            &mut self, 
-            par: &Vec<&str>, 
+            &mut self,
+            par: &Vec<&str>,
             destination: &mut T,
             pos: DbgPos
         ) -> CompileResult {
@@ -50,7 +52,8 @@ macro_rules! simple_commands {
             let mut result: Vec<u8> = vec![];
             let mut _parameters_i_:usize = 0;
             $(
-                let $pname = $parser(par[_parameters_i_]).parameter("arg ".to_string() + &_parameters_i_.to_string())?;
+                let $pname = $parser(par[_parameters_i_])
+                    .parameter("arg ".to_string() + &_parameters_i_.to_string())?;
                 _parameters_i_ += 1;
             )*
             $({
@@ -72,4 +75,37 @@ macro_rules! simple_commands {
         }
     };
 
+}
+
+macro_rules! div_variant {
+    (@resolve $command:ident => $code: expr) => {
+        impl<M: CommandBehaviourModifier> Div<M> {
+            pub fn $command<T: Writer>(
+                _engine: &mut Engine<T>,
+                par: &Vec<&str>,
+                destination: &mut T,
+                pos: DbgPos,
+            ) -> CompileResult {
+                par.assert_len_in(0..=1)?;
+                destination.write_command(
+                    &M::modify({
+                        if par.len() == 1 {
+                            let v = $code | 0b00010000;
+                            vec![0xA9, v, parse_const_u8_plus_one(par[0]).parameter("arg 0")?]
+                        } else {
+                            let v = $code & (!0b00010000);
+                            vec![0xA9, v]
+                        }
+                    }),
+                    DbgNode::from(pos)
+                )
+            }
+        }
+    };
+
+    ($($command: ident => $code:expr)*) => {
+        $(
+            div_variant!(@resolve $command => $code);
+        )*
+    };
 }
