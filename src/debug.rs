@@ -11,28 +11,56 @@
 * limitations under the License.
 */
 
-use serde::{Serialize, Deserialize};
-use std::collections::BTreeMap;
+//! Handles debugging information.
+//!
+//! There are a few basic position helpers: [`Line`], [`Lines`], and [`DbgPos`]. This last one
+//! represents a position in a file.
+//!
+//! Then [`DbgNode`] essentially corresponds to a cell and handles two things:
+//! - a map from the cell data offsets to [`DbgNode`]s, and
+//! - a vector storing the [`DbgNode`]s corresponding to the cell's cell-references.
+//!
+//! Last, [`DbgInfo`] stores the [`DbgNode`]s for all cells thanks to a map which keys are the
+//! (string) representation hashes of the cells of the input program.
+
+use std::{collections::BTreeMap, fmt};
+
+use serde::{Deserialize, Serialize};
 use ton_types::{Cell, UInt256};
 
+/// Alias for a [`Vec`] of [`Line`].
 pub type Lines = Vec<Line>;
+
+/// Content of a line ([`String`]) and [`DbgPos`] information.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Line {
+    /// Content of the line.
     pub text: String,
-    pub pos: DbgPos
+    /// Position information.
+    pub pos: DbgPos,
 }
-
 impl Line {
+    /// Constructor.
     pub fn new(text: &str, filename: &str, line: usize) -> Self {
         Line {
             text: String::from(text),
-            pos: DbgPos { filename: String::from(filename), line, line_code: line }
+            pos: DbgPos {
+                filename: String::from(filename),
+                line,
+                line_code: line,
+            },
         }
     }
+
+    /// Constructor with a custom line code.
     pub fn new_extended(text: &str, filename: &str, line: usize, line_code: usize) -> Self {
         Line {
             text: String::from(text),
-            pos: DbgPos { filename: String::from(filename), line, line_code }
+            pos: DbgPos {
+                filename: String::from(filename),
+                line,
+                line_code,
+            },
         }
     }
 }
@@ -43,51 +71,83 @@ pub fn lines_to_string(lines: &Lines) -> String {
         .fold(String::new(), |result, line| result + line.text.as_str())
 }
 
+/// Position information for lines.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct DbgPos {
+    /// Name of the source file, empty for *none*.
     pub filename: String,
+    /// Line number.
     pub line: usize,
+    /// Line code, ignored in serialization and printing.
     #[serde(skip)]
     pub line_code: usize,
 }
-
-impl std::fmt::Display for DbgPos {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for DbgPos {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let filename = if self.filename.is_empty() {
             "<none>"
         } else {
-            self.filename.as_str()
+            &self.filename
         };
         write!(f, "{}:{}", filename, self.line)
     }
 }
-
 impl Default for DbgPos {
     fn default() -> Self {
-        Self { filename: String::new(), line: 0, line_code: 0 }
+        Self {
+            filename: String::new(),
+            line: 0,
+            line_code: 0,
+        }
     }
 }
+
+/// A map from offsets (for cell data) to position information.
+pub type OffsetPos = BTreeMap<usize, DbgPos>;
+
+/// Information about the components of a node (cell).
 #[derive(Clone)]
 pub struct DbgNode {
-    pub offsets: BTreeMap<usize, DbgPos>,
+    /// Maps data-offsets to position information.
+    pub offsets: OffsetPos,
+    /// List of children (cell references) position information.
     pub children: Vec<DbgNode>,
 }
-
 impl DbgNode {
+    /// Constructs an empty node.
     pub fn new() -> Self {
         Self {
-            offsets: BTreeMap::new(),
+            offsets: OffsetPos::new(),
             children: vec![],
         }
     }
+
+    /// Constructs a node with the data at offset `0` associated to `pos`.
     pub fn from(pos: DbgPos) -> Self {
         let mut node = Self::new();
         node.offsets.insert(0, pos);
         node
     }
+
+    /// Registers an `offset`/`pos`ition association.
+    ///
+    /// **Overwrites** the previous binding, if any.
+    ///
+    /// # TODO
+    ///
+    /// - Check the binding is new, or at least return the old one so that caller can check/ignore
+    ///   previous bindings?
     pub fn append(self: &mut Self, offset: usize, pos: DbgPos) {
         self.offsets.insert(offset, pos);
     }
+
+    /// Merges `self` with the content (offsets and children) of `dbg` with an `offset`.
+    ///
+    /// If self contains conflicting `offsets` bindings, they will be overwritten.
+    ///
+    /// # TODO
+    ///
+    /// - Check no overwriting takes place?
     pub fn inline_node(self: &mut Self, offset: usize, dbg: DbgNode) {
         for entry in dbg.offsets {
             self.offsets.insert(entry.0 + offset, entry.1);
@@ -96,14 +156,21 @@ impl DbgNode {
             self.append_node(child);
         }
     }
+
+    /// Appends a node to **the children** of `self`.
+    ///
+    /// # Panics
+    ///
+    /// - if `self.children.len() ≤ 4`, meaning the cell has more than four cell-references.
     pub fn append_node(self: &mut Self, dbg: DbgNode) {
         assert!(self.children.len() <= 4);
         self.children.push(dbg)
     }
 }
 
-impl std::fmt::Display for DbgNode {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+/// Multi-line display.
+impl fmt::Display for DbgNode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for entry in self.offsets.iter() {
             writeln!(f, "{}:{}", entry.0, entry.1)?
         }
@@ -111,42 +178,61 @@ impl std::fmt::Display for DbgNode {
     }
 }
 
+/// Stores data-offset position information for a bunch of cells.
+///
+/// Note that this type stores nothing about the sub-cells of each cell, as opposed to [`DbgNode`].
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DbgInfo {
-    pub map: BTreeMap<String, BTreeMap<usize, DbgPos>>
+    /// Maps cell-hashes to data-offset position information.
+    pub map: BTreeMap<String, OffsetPos>,
 }
-
 impl DbgInfo {
+    /// Empty constructor.
     pub fn new() -> Self {
-        DbgInfo { map: BTreeMap::new() }
+        Self {
+            map: BTreeMap::new(),
+        }
     }
+    /// Constructor from a single cell.
     pub fn from(cell: &Cell, node: &DbgNode) -> Self {
-        let mut info = DbgInfo { map: BTreeMap::new() };
+        let mut info = Self::new();
         info.collect(&cell, &node);
         info
     }
+
+    /// Number of cells registered.
     pub fn len(&self) -> usize {
         self.map.len()
     }
+    /// True if no cells are registered.
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
     }
+
+    /// Merges two selves.
     pub fn append(&mut self, other: &mut Self) {
         self.map.append(&mut other.map);
     }
-    pub fn insert(&mut self, key: UInt256, tree: BTreeMap<usize, DbgPos>) {
+
+    /// Inserts some data-offset info for a representation hash **if it is new**.
+    pub fn insert(&mut self, key: UInt256, tree: OffsetPos) {
         self.map.entry(key.to_hex_string()).or_insert(tree);
     }
-    pub fn remove(&mut self, key: &UInt256) -> Option<BTreeMap<usize, DbgPos>> {
+    /// Removes a hash/data-offset info binding.
+    pub fn remove(&mut self, key: &UInt256) -> Option<OffsetPos> {
         self.map.remove(&key.to_hex_string())
     }
-    pub fn get(&self, key: &UInt256) -> Option<&BTreeMap<usize, DbgPos>> {
+    /// Retrieves a hash/data-offset info binding.
+    pub fn get(&self, key: &UInt256) -> Option<&OffsetPos> {
         self.map.get(&key.to_hex_string())
     }
-    pub fn first_entry(&self) -> Option<&BTreeMap<usize, DbgPos>> {
+    /// Accessor for the first entry in the cell hash map.
+    pub fn first_entry(&self) -> Option<&OffsetPos> {
         self.map.iter().next().map(|k_v| k_v.1)
     }
-    fn collect(self: &mut Self, cell: &Cell, dbg: &DbgNode) {
+
+    /// Adds a cell to the cell hash map, given its [`DbgNode`], **recursively**.
+    fn collect(&mut self, cell: &Cell, dbg: &DbgNode) {
         let hash = cell.repr_hash().to_hex_string();
         // note existence of identical cells in a tree is normal
         if !self.map.contains_key(&hash) {
