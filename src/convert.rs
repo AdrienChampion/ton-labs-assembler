@@ -42,34 +42,69 @@ fn test_bits_to_bytes() {
     }
 }
 
+/// Smallest number of bits needed to encode `value`.
 #[inline]
 fn bitsize(value: &BigInt) -> usize {
-    if (value == &0.into()) || (value == &(-1).into()) {
-        return 1;
+    use num::{One, Zero};
+    if value.is_zero() || (-value).is_one() {
+        1
+    } else {
+        let res = value.bits();
+
+        if value.sign() == Sign::Plus {
+            res + 1
+        } else {
+            // For negative values value.bits() returns correct result only when value is power of 2.
+            let mut modpow2 = -value;
+            modpow2 &= &modpow2 - 1;
+            if modpow2.sign() == Sign::NoSign {
+                return res;
+            }
+            res + 1
+        }
     }
-    let res = value.bits();
-    if value.sign() == Sign::Plus {
-        return res + 1;
+}
+#[test]
+fn test_bitsize() {
+    let input_res_list = [
+        (0, 1),
+        (-1, 1),
+        (-7, 4),
+        (-10, 5),
+        (1, 2),
+        (2, 3),
+        (7, 4),
+        (8, 5),
+        (15, 5),
+        (16, 6),
+        (31, 6),
+        (32, 7),
+        (63, 7),
+        (64, 8),
+        (65, 8),
+    ];
+    for (input, expected) in input_res_list {
+        let res = bitsize(&input.into());
+        println!("bitsize({}) = {} =?= {}", input, res, expected);
+        assert_eq!(expected, res);
     }
-    // For negative values value.bits() returns correct result only when value is power of 2.
-    let mut modpow2 = -value;
-    modpow2 &= &modpow2 - 1;
-    if modpow2.sign() == Sign::NoSign {
-        return res;
-    }
-    res + 1
 }
 
-/// Encodes value as big endian octet string for PUSHINT primitive using the format
-/// from TVM Spec A.3.1:
-///  "82lxxx — PUSHINT xxx, where 5-bit 0 ≤ l ≤ 30 determines the length n = 8l + 19
-///  of signed big-endian integer xxx. The total length of this instruction
-///  is l + 4 bytes or n + 13 = 8l + 32 bits."
+/// Encodes some value as a big endian octet string for `PUSHINT` primitive.
+///
+/// Yields `None` if `value` needs more than `257` bits to encode its value.
+///
+/// Uses the format from *TVM Spec A.3.1*:
+///
+/// > "82lxxx — `PUSHINT xxx`, where 5-bit `0 ≤ l ≤ 30` determines the length `n = 8l + 19` of
+/// > signed big-endian integer `xxx`. The total length of this instruction is `l + 4` bytes or `n +
+/// > 13 = 8l + 32` bits."
 pub fn to_big_endian_octet_string(value: &BigInt) -> Option<Vec<u8>> {
     let mut n = bitsize(value);
     if n > 257 {
         return None;
     }
+
     if n < 19 {
         n = 19;
     } else {
