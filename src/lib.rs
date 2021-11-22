@@ -12,7 +12,11 @@
 */
 
 use std::{collections::HashMap, ops::RangeInclusive};
+
 use ton_types::{BuilderData, Cell, SliceData};
+
+#[macro_use]
+mod macros;
 
 pub use debug::{lines_to_string, DbgInfo, Line, Lines};
 
@@ -20,9 +24,6 @@ mod errors;
 pub use errors::{
     CompileError, OperationError, ParameterError, Position, ToOperationParameterError,
 };
-
-#[macro_use]
-mod macros;
 
 mod complex;
 mod convert;
@@ -35,15 +36,29 @@ pub use debug::DbgPos;
 use writer::{CodePage0, Writer};
 
 // Basic types *****************************************************************
-/// Operation Compilation result
+
+/// Operation Compilation result.
 pub type CompileResult = Result<(), OperationError>;
+
+/// Alias for functions that handle user input.
+///
+/// Takes
+/// - a ref-mut to an engine,
+/// - a vector ref to some arguments,
+/// - a destination to write to,
+/// - a position information.
 type CompileHandler<T> =
     fn(&mut Engine<T>, &Vec<&str>, destination: &mut T, pos: DbgPos) -> CompileResult;
 
 // CompileError::Operation handlers ***********************************************************
+
+/// Provides helpers to check the arity of a command.
 trait EnsureParametersCountInRange {
+    /// Fails if the list of parameters is not empty.
     fn assert_empty(&self) -> Result<(), OperationError>;
+    /// Fails if the list of parameters is not a certain length.
     fn assert_len(&self, _n: usize) -> Result<(), OperationError>;
+    /// Fails if the length of the list of parameters is not in some range.
     fn assert_len_in(&self, _r: RangeInclusive<usize>) -> Result<(), OperationError>;
 }
 
