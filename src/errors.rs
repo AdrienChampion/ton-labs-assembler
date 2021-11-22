@@ -13,94 +13,207 @@
 
 use std::fmt;
 
+/// A position in a file.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Position {
+    /// File name.
     pub filename: String,
+    /// Row.
     pub line: usize,
+    /// Column.
     pub column: usize,
 }
+impl Position {
+    /// Constructor.
+    pub fn new(filename: impl Into<String>, line: usize, column: usize) -> Self {
+        Self {
+            filename: filename.into(),
+            line,
+            column,
+        }
+    }
+}
 
+/// Alias for operation names ([`String`]).
 pub type OperationName = String;
+/// Alias for parameter names ([`String`]).
 pub type ParameterName = String;
+/// Alias for error explanations ([`String`]).
 pub type Explanation = String;
 
+/// Errors over the parameters of an operation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ParameterError {
+    /// Type-checking error.
     UnexpectedType,
+    /// Unsupported feature.
     NotSupported,
+    /// Parameter is out of range.
     OutOfRange,
 }
 
+/// Errors over operations.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OperationError {
+    /// Parameter-level error.
     Parameter(ParameterName, ParameterError),
+    /// Arity error.
     TooManyParameters,
+    /// Parameters do not make sense.
     LogicErrorInParameters(&'static str),
+    /// Some required parameter is missing.
     MissingRequiredParameters,
+    /// Missing block.
     MissingBlock,
+    /// Nested compilation error inside an operation.
     Nested(Box<CompileError>),
+    /// Operation size error.
     NotFitInSlice,
 }
 
+/// Top-level compile error.
+///
+/// **NB**: all constructors set the name of the file of the error position to the empty string.
+/// Use [`Self::with_filename`] to specify the file name.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CompileError {
+    /// Syntax error.
     Syntax(Position, Explanation),
+    /// Unknown operation.
     UnknownOperation(Position, OperationName),
+    /// Operation-level error.
     Operation(Position, OperationName, OperationError),
 }
 
 impl CompileError {
+    /// Creates a syntax error.
+    ///
+    /// Sets the name of the file of the error position as the empty string.
     pub fn syntax<S: ToString>(line: usize, column: usize, explanation: S) -> Self {
-        CompileError::Syntax(Position { filename: String::new(), line, column }, explanation.to_string())
+        CompileError::Syntax(Position::new("", line, column), explanation.to_string())
     }
+    /// Creates an unknown operation error.
+    ///
+    /// Sets the name of the file of the error position as the empty string.
     pub fn unknown<S: ToString>(line: usize, column: usize, name: S) -> Self {
-        CompileError::UnknownOperation(Position { filename: String::new(), line, column }, name.to_string())
+        CompileError::UnknownOperation(Position::new("", line, column), name.to_string())
     }
-    pub fn operation<S: ToString>(line: usize, column: usize, name: S, error: OperationError) -> Self {
-        CompileError::Operation(Position { filename: String::new(), line, column }, name.to_string(), error)
+    /// Creates an operation-level error.
+    ///
+    /// Sets the name of the file of the error position as the empty string.
+    pub fn operation<S: ToString>(
+        line: usize,
+        column: usize,
+        name: S,
+        error: OperationError,
+    ) -> Self {
+        CompileError::Operation(Position::new("", line, column), name.to_string(), error)
     }
+
+    /// Some parameters are missing.
+    ///
+    /// Sets the name of the file of the error position as the empty string.
     pub fn missing_params<S: ToString>(line: usize, column: usize, name: S) -> Self {
-        CompileError::Operation(Position { filename: String::new(), line, column }, name.to_string(), OperationError::MissingRequiredParameters)
+        CompileError::Operation(
+            Position::new("", line, column),
+            name.to_string(),
+            OperationError::MissingRequiredParameters,
+        )
     }
+    /// A block is missing.
+    ///
+    /// Sets the name of the file of the error position as the empty string.
     pub fn missing_block<S: ToString>(line: usize, column: usize, name: S) -> Self {
-        CompileError::Operation(Position { filename: String::new(), line, column }, name.to_string(), OperationError::MissingBlock)
+        CompileError::Operation(
+            Position::new("", line, column),
+            name.to_string(),
+            OperationError::MissingBlock,
+        )
     }
+    /// Operation was given too many parameters.
+    ///
+    /// Sets the name of the file of the error position as the empty string.
     pub fn too_many_params<S: ToString>(line: usize, column: usize, name: S) -> Self {
-        CompileError::Operation(Position { filename: String::new(), line, column }, name.to_string(), OperationError::TooManyParameters)
+        CompileError::Operation(
+            Position::new("", line, column),
+            name.to_string(),
+            OperationError::TooManyParameters,
+        )
     }
-    pub fn out_of_range<S1: ToString, S2: ToString>(line: usize, column: usize, name: S1, param: S2) -> Self {
+
+    /// Out of range parameter.
+    ///
+    /// Sets the name of the file of the error position as the empty string.
+    pub fn out_of_range<S1: ToString, S2: ToString>(
+        line: usize,
+        column: usize,
+        name: S1,
+        param: S2,
+    ) -> Self {
         let operation = OperationError::Parameter(param.to_string(), ParameterError::OutOfRange);
-        CompileError::Operation(Position { filename: String::new(), line, column }, name.to_string(), operation)
+        CompileError::Operation(Position::new("", line, column), name.to_string(), operation)
     }
+
+    /// Unexpected type error.
+    ///
+    /// Sets the name of the file of the error position as the empty string.
+    pub fn unexpected_type<S1: ToString, S2: ToString>(
+        line: usize,
+        column: usize,
+        name: S1,
+        param: S2,
+    ) -> Self {
+        let operation =
+            OperationError::Parameter(param.to_string(), ParameterError::UnexpectedType);
+        CompileError::operation(line, column, name.to_string(), operation)
+    }
+    /// Logic error.
+    ///
+    /// Sets the name of the file of the error position as the empty string.
+    pub fn logic_error<S: ToString>(
+        line: usize,
+        column: usize,
+        name: S,
+        error: &'static str,
+    ) -> Self {
+        let operation = OperationError::LogicErrorInParameters(error);
+        CompileError::operation(line, column, name.to_string(), operation)
+    }
+
+    /// Filename accessor.
+    pub fn filename(&self) -> &String {
+        match self {
+            Self::Syntax(pos, _) => &pos.filename,
+            Self::UnknownOperation(pos, _) => &pos.filename,
+            Self::Operation(pos, _, _) => &pos.filename,
+        }
+    }
+
+    /// Sets the filename.
     pub fn with_filename(mut self, filename: String) -> Self {
         match self {
             Self::Syntax(ref mut pos, _) => {
                 pos.filename = filename;
-            },
+            }
             Self::UnknownOperation(ref mut pos, _) => {
                 pos.filename = filename;
-            },
+            }
             Self::Operation(ref mut pos, _, _) => {
                 pos.filename = filename;
             }
         };
         self
     }
-    pub fn unexpected_type<S1: ToString, S2: ToString>(line: usize, column: usize, name: S1, param: S2) -> Self {
-        let operation = OperationError::Parameter(param.to_string(), ParameterError::UnexpectedType);
-        CompileError::operation(line, column, name.to_string(), operation)
-    }
-    pub fn logic_error<S: ToString>(line: usize, column: usize, name: S, error: &'static str) -> Self {
-        let operation = OperationError::LogicErrorInParameters(error);
-        CompileError::operation(line, column, name.to_string(), operation)
-    }
 }
 
+/// Turns itself into a parameter error for an operation.
 pub trait ToOperationParameterError<T>
 where
     T: Into<ParameterName>,
 {
+    /// Output type, a result or an [`OperationError`].
     type Output;
+    /// Converts itself into the output type.
     fn parameter(self, name: T) -> Self::Output;
 }
 
@@ -109,7 +222,6 @@ where
     S: Into<ParameterName>,
 {
     type Output = Result<T, OperationError>;
-
     fn parameter(self, name: S) -> Result<T, OperationError> {
         self.map_err(|e| e.parameter(name))
     }
@@ -149,7 +261,9 @@ impl fmt::Display for OperationError {
         fn indent(text: String) -> String {
             let mut indented = "".to_string();
             for line in text.split("\n") {
-                if line.is_empty() { break; }
+                if line.is_empty() {
+                    break;
+                }
                 indented += "  ";
                 indented += line;
                 indented += "\n";
@@ -163,9 +277,7 @@ impl fmt::Display for OperationError {
                 name, error
             ),
             OperationError::TooManyParameters => write!(f, "Operation has too many parameters."),
-            OperationError::LogicErrorInParameters(ref error) => write!(f,
-                "Logic error {}", error
-            ),
+            OperationError::LogicErrorInParameters(ref error) => write!(f, "Logic error {}", error),
             OperationError::MissingRequiredParameters => {
                 write!(f, "Operation requires more parameters.")
             }
@@ -173,7 +285,9 @@ impl fmt::Display for OperationError {
                 write!(f, "Operation requires block in {{}} braces.")
             }
             OperationError::Nested(error) => write!(f, "\n{}", indent(error.to_string())),
-            OperationError::NotFitInSlice => write!(f, "Command bytecode is too long for single slice"),
+            OperationError::NotFitInSlice => {
+                write!(f, "Command bytecode is too long for single slice")
+            }
         }
     }
 }
@@ -184,7 +298,9 @@ impl fmt::Display for CompileError {
             CompileError::Syntax(position, explanation) => {
                 write!(f, "{} Syntax error: {}", position, explanation)
             }
-            CompileError::UnknownOperation(position, name) => write!(f, "{} Unknown operation {}", position, name),
+            CompileError::UnknownOperation(position, name) => {
+                write!(f, "{} Unknown operation {}", position, name)
+            }
             CompileError::Operation(position, name, error) => {
                 write!(f, "Instruction {} at {}: {}", name, position, error)
             }
