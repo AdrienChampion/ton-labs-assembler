@@ -159,6 +159,8 @@ macro_rules! simple_commands {
             )*
             "\n",
         )]
+
+        /// Produces the list of all simple commands and their handler.
         pub fn enumerate_simple_commands() -> &'static [(&'static str, $crate::CompileHandler<T>)] {
             &[
                 $( (stringify!($command), $crate::Engine::<T>::$command), )*
@@ -173,10 +175,10 @@ macro_rules! div_variant_internal {
     (@resolve $command:ident => $code:expr) => {
         impl<M: $crate::complex::CommandBehaviourModifier> $crate::complex::Div<M> {
             #[doc = concat!(
-                "Compile function for the `",
-                stringify!($command),
-                "` division variant."
-            )]
+                        "Compile function for the `",
+                        stringify!($command),
+                        "` division variant."
+                    )]
             pub fn $command<T: $crate::Writer>(
                 _engine: &mut $crate::Engine<T>,
                 par: &std::vec::Vec<&str>,

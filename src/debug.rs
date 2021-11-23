@@ -65,10 +65,24 @@ impl Line {
     }
 }
 
+/// Concatenates some lines, **without newlines**.
 pub fn lines_to_string(lines: &Lines) -> String {
     lines
         .iter()
         .fold(String::new(), |result, line| result + line.text.as_str())
+    // Potential fix below.
+    //
+    // ```rust
+    // let mut res = String::with_capacity(lines.len() * 5);
+    // for line in lines {
+    //     if !res.is_empty() {
+    //         res.push('\n')
+    //     }
+    //     res.push_str(&line.text);
+    // }
+    // res.shrink_to_fit();
+    // res
+    // ```
 }
 
 /// Position information for lines.

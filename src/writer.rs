@@ -11,6 +11,8 @@
 * limitations under the License.
 */
 
+//! [`Writer`] trait and codepages (only [`CodePage0`] for now).
+
 use ton_types::{BuilderData, SliceData};
 
 use crate::{
@@ -62,6 +64,7 @@ pub(crate) struct CodePage0 {
 }
 
 impl Writer for CodePage0 {
+    /// Constructor.
     fn new() -> Self {
         Self {
             cells: vec![BuilderData::new()],
@@ -69,6 +72,7 @@ impl Writer for CodePage0 {
         }
     }
 
+    /// Writes a command.
     fn write_command(&mut self, command: &[u8], dbg: DbgNode) -> Result<(), OperationError> {
         self.write_command_bitstring(command, command.len() * 8, dbg)
     }

@@ -12,30 +12,38 @@
 */
 
 use std::{marker::PhantomData, ops::Range};
-use ton_types::SliceData;
 
-use super::errors::{OperationError, ParameterError};
-
-use super::{
-    convert::to_big_endian_octet_string, errors::ToOperationParameterError, parse::*,
-    writer::Writer, CompileResult, Engine, EnsureParametersCountInRange,
-};
-use crate::debug::{DbgNode, DbgPos};
 use num::{BigInt, Num};
 
-trait CommandBehaviourModifier {
+use ton_types::SliceData;
+
+use crate::{
+    convert::to_big_endian_octet_string,
+    debug::{DbgNode, DbgPos},
+    errors::{OperationError, ParameterError, ToOperationParameterError},
+    parse::*,
+    writer::Writer,
+    CompileResult, Engine, EnsureParametersCountInRange,
+};
+
+/// Changes the way a command behaves.
+///
+/// Used in particular for division [`Div`].
+pub trait CommandBehaviourModifier {
+    /// Modifies the behavior of a command.
     fn modify(code: Vec<u8>) -> Vec<u8>;
 }
 
-struct Signaling {}
-struct Quiet {}
-
+/// Marker type for the *signaling* [`CommandBehaviourModifier`].
+pub struct Signaling;
 impl CommandBehaviourModifier for Signaling {
     fn modify(code: Vec<u8>) -> Vec<u8> {
         code
     }
 }
 
+/// Marker type for the *quiet* [`CommandBehaviourModifier`].
+pub struct Quiet;
 impl CommandBehaviourModifier for Quiet {
     fn modify(code: Vec<u8>) -> Vec<u8> {
         let mut code = code;
@@ -44,7 +52,7 @@ impl CommandBehaviourModifier for Quiet {
     }
 }
 
-fn compile_with_register<T: Writer>(
+pub fn compile_with_register<T: Writer>(
     register: &str,
     symbol: char,
     range: Range<isize>,
@@ -58,7 +66,7 @@ fn compile_with_register<T: Writer>(
     destination.write_command(ret.as_slice(), DbgNode::from(pos))
 }
 
-fn compile_with_any_register<T: Writer>(
+pub fn compile_with_any_register<T: Writer>(
     register: &str,
     code_stack_short: &[u8],
     code_stack_long: &[u8],
@@ -92,7 +100,7 @@ fn compile_with_any_register<T: Writer>(
     })
 }
 
-fn compile_call<T: Writer>(
+pub fn compile_call<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -111,7 +119,7 @@ fn compile_call<T: Writer>(
     }
 }
 
-fn compile_ref<T: Writer>(
+pub fn compile_ref<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -130,7 +138,7 @@ fn compile_ref<T: Writer>(
     destination.write_composite_command(command, cont, pos, dbg)
 }
 
-fn compile_callref<T: Writer>(
+pub fn compile_callref<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -139,7 +147,7 @@ fn compile_callref<T: Writer>(
     return compile_ref(engine, par, destination, &[0xDB, 0x3C], pos);
 }
 
-fn compile_jmpref<T: Writer>(
+pub fn compile_jmpref<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -148,16 +156,17 @@ fn compile_jmpref<T: Writer>(
     return compile_ref(engine, par, destination, &[0xDB, 0x3D], pos);
 }
 
-fn compile_ifref<T: Writer>(
+pub fn compile_ifref<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
     pos: DbgPos,
 ) -> CompileResult {
+    println!("compiling ifref {:?}", par);
     return compile_ref(engine, par, destination, &[0xE3, 0x00], pos);
 }
 
-fn compile_ifnotref<T: Writer>(
+pub fn compile_ifnotref<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -166,7 +175,7 @@ fn compile_ifnotref<T: Writer>(
     return compile_ref(engine, par, destination, &[0xE3, 0x01], pos);
 }
 
-fn compile_ifjmpref<T: Writer>(
+pub fn compile_ifjmpref<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -175,7 +184,7 @@ fn compile_ifjmpref<T: Writer>(
     return compile_ref(engine, par, destination, &[0xE3, 0x02], pos);
 }
 
-fn compile_ifnotjmpref<T: Writer>(
+pub fn compile_ifnotjmpref<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -184,7 +193,7 @@ fn compile_ifnotjmpref<T: Writer>(
     return compile_ref(engine, par, destination, &[0xE3, 0x03], pos);
 }
 
-fn compile_ifrefelse<T: Writer>(
+pub fn compile_ifrefelse<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -193,7 +202,7 @@ fn compile_ifrefelse<T: Writer>(
     return compile_ref(engine, par, destination, &[0xE3, 0x0D], pos);
 }
 
-fn compile_ifelseref<T: Writer>(
+pub fn compile_ifelseref<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -202,7 +211,7 @@ fn compile_ifelseref<T: Writer>(
     return compile_ref(engine, par, destination, &[0xE3, 0x0E], pos);
 }
 
-fn compile_pushref<T: Writer>(
+pub fn compile_pushref<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -211,7 +220,7 @@ fn compile_pushref<T: Writer>(
     return compile_ref(engine, par, destination, &[0x88], pos);
 }
 
-fn compile_pushrefslice<T: Writer>(
+pub fn compile_pushrefslice<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -220,7 +229,7 @@ fn compile_pushrefslice<T: Writer>(
     return compile_ref(engine, par, destination, &[0x89], pos);
 }
 
-fn compile_pushrefcont<T: Writer>(
+pub fn compile_pushrefcont<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -229,7 +238,7 @@ fn compile_pushrefcont<T: Writer>(
     return compile_ref(engine, par, destination, &[0x8A], pos);
 }
 
-fn compile_pop<T: Writer>(
+pub fn compile_pop<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -246,7 +255,7 @@ fn compile_pop<T: Writer>(
     )
 }
 
-fn compile_push<T: Writer>(
+pub fn compile_push<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -263,7 +272,7 @@ fn compile_push<T: Writer>(
     )
 }
 
-fn compile_pushcont<T: Writer>(
+pub fn compile_pushcont<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -305,7 +314,7 @@ fn compile_pushcont<T: Writer>(
     }
 }
 
-fn compile_callxargs<T: Writer>(
+pub fn compile_callxargs<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -324,7 +333,7 @@ fn compile_callxargs<T: Writer>(
     }
 }
 
-struct Div<M: CommandBehaviourModifier>(PhantomData<M>);
+pub struct Div<M: CommandBehaviourModifier>(PhantomData<M>);
 
 div_variant!(
     lshiftdiv => 0b11010100
@@ -391,7 +400,7 @@ impl<M: CommandBehaviourModifier> Div<M> {
     }
 }
 
-fn compile_setcontargs<T: Writer>(
+pub fn compile_setcontargs<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -411,7 +420,7 @@ fn compile_setcontargs<T: Writer>(
 }
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
-fn compile_pushint<T: Writer>(_engine: &mut Engine<T>, par: &Vec<&str>, destination: &mut T, pos: DbgPos) -> CompileResult {
+pub fn compile_pushint<T: Writer>(_engine: &mut Engine<T>, par: &Vec<&str>, destination: &mut T, pos: DbgPos) -> CompileResult {
     par.assert_len(1)?;
     let (sub_str, radix) = if par[0].len() > 2 && (par[0][0..2].eq("0x") || par[0][0..2].eq("0X")) {
         (par[0][2..].to_string(), 16)
@@ -443,7 +452,7 @@ fn compile_pushint<T: Writer>(_engine: &mut Engine<T>, par: &Vec<&str>, destinat
     }?.as_slice(), DbgNode::from(pos))
 }
 
-fn compile_bchkbits<T: Writer>(
+pub fn compile_bchkbits<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -466,7 +475,7 @@ fn compile_bchkbits<T: Writer>(
     )
 }
 
-fn compile_bchkbitsq<T: Writer>(
+pub fn compile_bchkbitsq<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -487,7 +496,7 @@ fn compile_bchkbitsq<T: Writer>(
     }
 }
 
-fn compile_dumpstr<T: Writer>(
+pub fn compile_dumpstr<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -507,7 +516,7 @@ fn compile_dumpstr<T: Writer>(
     destination.write_command(buffer.as_slice(), DbgNode::from(pos))
 }
 
-fn compile_dumptosfmt<T: Writer>(
+pub fn compile_dumptosfmt<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -516,7 +525,7 @@ fn compile_dumptosfmt<T: Writer>(
     compile_dumpstr::<T>(engine, par, destination, vec![0xFE, 0xF0], 16, pos)
 }
 
-fn compile_logstr<T: Writer>(
+pub fn compile_logstr<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -525,7 +534,7 @@ fn compile_logstr<T: Writer>(
     compile_dumpstr::<T>(engine, par, destination, vec![0xFE, 0xF0, 0x00], 15, pos)
 }
 
-fn compile_printstr<T: Writer>(
+pub fn compile_printstr<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -534,7 +543,7 @@ fn compile_printstr<T: Writer>(
     compile_dumpstr::<T>(engine, par, destination, vec![0xFE, 0xF0, 0x01], 15, pos)
 }
 
-fn compile_stsliceconst<T: Writer>(
+pub fn compile_stsliceconst<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -551,7 +560,7 @@ fn compile_stsliceconst<T: Writer>(
     }
 }
 
-fn compile_pushslice<T: Writer>(
+pub fn compile_pushslice<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -566,7 +575,7 @@ fn compile_pushslice<T: Writer>(
 }
 
 #[allow(dead_code)]
-fn slice_cutting(mut long_slice: Vec<u8>, len: usize) -> SliceData {
+pub fn slice_cutting(mut long_slice: Vec<u8>, len: usize) -> SliceData {
     if long_slice.len() < len {
         return SliceData::new(long_slice);
     }
@@ -600,7 +609,7 @@ fn slice_cutting(mut long_slice: Vec<u8>, len: usize) -> SliceData {
     return cursor;
 }
 
-fn compile_xchg<T: Writer>(
+pub fn compile_xchg<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -645,7 +654,7 @@ fn compile_xchg<T: Writer>(
     }
 }
 
-fn compile_throw_helper<T: Writer>(
+pub fn compile_throw_helper<T: Writer>(
     par: &Vec<&str>,
     short_opcode: u8,
     long_opcode: u8,
@@ -701,7 +710,7 @@ pub(super) fn compile_slice(
     Ok(prefix)
 }
 
-fn compile_sdbegins<T: Writer>(
+pub fn compile_sdbegins<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -719,7 +728,7 @@ fn compile_sdbegins<T: Writer>(
     }
 }
 
-fn compile_sdbeginsq<T: Writer>(
+pub fn compile_sdbeginsq<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -730,7 +739,7 @@ fn compile_sdbeginsq<T: Writer>(
     destination.write_command(buffer.as_slice(), DbgNode::from(pos))
 }
 
-fn compile_throw<T: Writer>(
+pub fn compile_throw<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -739,7 +748,7 @@ fn compile_throw<T: Writer>(
     compile_throw_helper(par, 0x00, 0xC0, destination, pos)
 }
 
-fn compile_throwif<T: Writer>(
+pub fn compile_throwif<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -748,7 +757,7 @@ fn compile_throwif<T: Writer>(
     compile_throw_helper(par, 0x40, 0xD0, destination, pos)
 }
 
-fn compile_throwifnot<T: Writer>(
+pub fn compile_throwifnot<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -757,7 +766,7 @@ fn compile_throwifnot<T: Writer>(
     compile_throw_helper(par, 0x80, 0xE0, destination, pos)
 }
 
-fn compile_blob<T: Writer>(
+pub fn compile_blob<T: Writer>(
     _engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,
@@ -775,7 +784,7 @@ fn compile_blob<T: Writer>(
     destination.write_command_bitstring(slice.storage(), slice.remaining_bits(), DbgNode::from(pos))
 }
 
-fn compile_cell<T: Writer>(
+pub fn compile_cell<T: Writer>(
     engine: &mut Engine<T>,
     par: &Vec<&str>,
     destination: &mut T,

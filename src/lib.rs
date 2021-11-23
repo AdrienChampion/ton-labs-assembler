@@ -31,6 +31,23 @@ mod debug;
 mod parse;
 mod simple;
 
+/// Exposes internal types and helpers.
+#[cfg(doc)]
+pub mod dev {
+    pub mod complex {
+        pub use crate::complex::*;
+    }
+    pub mod convert {
+        pub use crate::convert::*;
+    }
+    pub mod debug {
+        pub use crate::debug::*;
+    }
+    pub mod parse {
+        pub use crate::parse::*;
+    }
+}
+
 mod writer;
 pub use debug::DbgPos;
 use writer::{CodePage0, Writer};
@@ -72,6 +89,12 @@ impl<T> EnsureParametersCountInRange for Vec<T> {
     }
 
     fn assert_len_in(&self, range: RangeInclusive<usize>) -> Result<(), OperationError> {
+        println!(
+            "arity check `{} ≤ {} ≤ {}`",
+            range.start(),
+            self.len(),
+            range.end(),
+        );
         if &self.len() < range.start() {
             Err(OperationError::MissingRequiredParameters)
         } else if &self.len() > range.end() {
@@ -176,16 +199,14 @@ impl<T: Writer> CommandContext<T> {
         self.rule_option = None;
         // detecting some errors here if was
         if n > 1 {
-            for (line, column, _, was_comma) in &par[1..n] {
-                if !*was_comma {
-                    if let Some(line) = engine.lines.get(*line - 1) {
+            for (line, column, _, was_comma) in par[1..n].iter().cloned() {
+                if !was_comma {
+                    if let Some(line) = engine.lines.get(line - 1) {
                         let pos = &line.pos;
-                        return Err(
-                            CompileError::syntax(pos.line_code, *column, "Missing comma")
-                                .with_filename(pos.filename.clone()),
-                        );
+                        return Err(CompileError::syntax(pos.line_code, column, "Missing comma")
+                            .with_filename(pos.filename.clone()));
                     } else {
-                        return Err(CompileError::syntax(*line, *column, "Missing comma"));
+                        return Err(CompileError::syntax(line, column, "Missing comma"));
                     }
                 }
             }
@@ -233,17 +254,28 @@ impl<T: Writer> CommandContext<T> {
 
 // Compilation engine *********************************************************
 
+/// Handles parsing and compilation.
+///
+/// Type parameter `T` handle the actual compilation. It corresponds to a codepage, at least for
+/// now.
 #[allow(non_snake_case)]
 pub struct Engine<T: Writer> {
+    /// Row, `1`-indexed.
     line_no: usize,
+    /// Col, `1`-indexed.
     char_no: usize,
+    /// Line debug information, not used in parsing, only for error-reporting.
     lines: Lines,
+    /// Map from instruction names to compile handler.
     COMPILE_ROOT: HashMap<&'static str, CompileHandler<T>>,
 }
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
 impl<T: Writer> Engine<T> {
 
+    /// Constructor from some lines.
+    /// 
+    /// Note that input lines are only used for error-reporting, not parsing.
     #[cfg_attr(rustfmt, rustfmt_skip)]
     pub fn new(lines: Lines) -> Engine<T> {
         let mut ret = Engine::<T> {
@@ -257,23 +289,39 @@ impl<T: Writer> Engine<T> {
         ret
     }
 
-    fn is_whitespace(x: char) -> bool {
-        match x {
+    /// True if `c` is an ASCII whitespace character.
+    fn is_whitespace(c: char) -> bool {
+        match c {
             ' ' => true,
             '\n' => true,
             '\r' => true,
             '\t' => true,
             _ => false,
         }
+        // #idiom rewrite to
+        //
+        // ```rust
+        // match c {
+        //     ' ' | '\n' | '\r' | '\t' => true,
+        //     _ => false,
+        // }
+        // ```
     }
 
+    /// Sets the current position (row/col), returns the old one.
     fn set_pos(&mut self, line_no: usize, char_no: usize) -> (usize, usize) {
         let l = std::mem::replace(&mut self.line_no, line_no);
         let c = std::mem::replace(&mut self.char_no, char_no);
         (l, c)
     }
 
+    /// Compiles the input `source`.
     fn compile(&mut self, source: &str) -> Result<T, CompileError> {
+        // #todo This is the actual parser, inlined in this function. This should be its type
+        // (`struct`) with proper doc and tests, this current version is unreadable and
+        // extremely error-prone.
+
+        // #todo What is this?
         let mut ret = T::new();
         let mut par: Vec<(usize, usize, &str, bool)> = Vec::new();
         let mut acc = (0, 0);
@@ -284,6 +332,9 @@ impl<T: Writer> Engine<T> {
         let mut in_block = 0;
         let mut in_comment = false;
         let mut command_ctx = CommandContext::default();
+
+        // #optim rewrite as `[' ']` or `std::iter::Once(' ')`
+        //                                  vvvvvvvvvvv
         for ch in source.chars().chain(" ".chars()) {
             let mut newline_found = false;
             // Adjust line/char information
@@ -305,6 +356,7 @@ impl<T: Writer> Engine<T> {
                     in_block -= 1
                 }
                 if in_block == 0 {
+                    println!("pushing to `par`: {}", &source[s0..s1]);
                     par.push((y, x, &source[s0..s1], comma_found));
                     acc = (new_s1, new_s1)
                 } else {
@@ -455,6 +507,12 @@ pub fn compile_code_to_builder(code: &str) -> Result<BuilderData, CompileError> 
         .map(|code| code.finalize().0)
 }
 
+/// Compiles some code with debug information.
+///
+/// # TODO
+///
+/// - relies on `lines_to_string` which just concatenates lines without newlines; the [`DbgInfo`]
+///   produced contains positions that are not related to the actual input.
 pub fn compile_code_debuggable(code: Lines) -> Result<(SliceData, DbgInfo), CompileError> {
     log::trace!(target: "tvm", "begin compile\n");
     let source = lines_to_string(&code);

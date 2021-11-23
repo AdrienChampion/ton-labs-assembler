@@ -11,13 +11,18 @@
 * limitations under the License.
 */
 
-use super::{
+use crate::{
     errors::ToOperationParameterError, parse::*, writer::Writer, Engine,
     EnsureParametersCountInRange,
 };
 
 // Compilation engine *********************************************************
 
+/// # Unsafe
+/// 
+/// It seems that there is no check in place to make sure simple commands' opcodes do not clash.
+/// Same problem with clashes in complex commands, and with clashes between simple and complex
+/// commands.
 #[cfg_attr(rustfmt, rustfmt_skip)]
 impl<T: Writer> Engine<T> {
 
@@ -811,6 +816,7 @@ impl<T: Writer> Engine<T> {
         ZEROSWAPIFNOT2                       => 0x6F, 0x95
     }
 
+    /// Registers simple commands in the compile root.
     pub fn add_simple_commands(&mut self) {
         // Add automatic commands
         for (command, handler) in Self::enumerate_simple_commands() {
